@@ -4,7 +4,6 @@ const prism = require('prism-media');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const { spawn } = require('child_process');
 const keyfile = path.join( os.homedir(), ".recordbotkey" )
 /*
  * Write a block of type name to the stream
@@ -56,9 +55,6 @@ let sessionPath;
 let startTime;
 let guildName;
 let channelName;
-
-// 20 ms of silence: 48kHz * 2 channels * 2 bytes = 1920 * 2 = 3840 bytes
-const SILENCE_FRAME = Buffer.alloc(1920 * 2);
 
 client.on('ready', () => {
     console.log(`Logged in as ${client.user.tag}`);
