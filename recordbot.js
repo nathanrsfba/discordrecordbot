@@ -50,7 +50,7 @@ const recordingsRoot = path.join(__dirname, 'recordings');
 if (!fs.existsSync(recordingsRoot)) fs.mkdirSync(recordingsRoot);
 
 let connection;
-let recordingStreams = {}; // userId -> { ffmpeg, lastPacket, interval }
+let recordingStreams = {}; // userId -> { audioStream, outputStream }
 let activeChannelId;
 let sessionPath;
 let startTime;
@@ -145,6 +145,8 @@ client.on('voiceStateUpdate', (oldState, newState) => {
     if (newState.channelId === activeChannelId && !newState.member.user.bot) {
         startUserRecording(newState.id, newState.member.user.username);
     }
+
+    // TODO: Detect user leaving and close recording
 });
 
 function startUserRecording(userId, username) {
@@ -157,6 +159,7 @@ function startUserRecording(userId, username) {
         end: { behavior: EndBehaviorType.Manual }
     });
 
+    // TODO: Detect file exists == User left and rejoined, append to file and skip header
     const outputStream = fs.createWriteStream( fileName );
     writeBlob( outputStream, 'DRBT', null );
     writeBlobInt( outputStream, 'RSPS', recordRate );
@@ -169,9 +172,6 @@ function startUserRecording(userId, username) {
     writeBlob( outputStream, 'DATA', null );
 
     // writeBlobInt( outputStream, 'CHNL', connection
-
-
-
 
     const decoder = new prism.opus.Decoder({ 
         rate: recordRate, 
