@@ -1,0 +1,41 @@
+Discord RecordBot saves recordings in a very simple structured file format.  The file consists of 'blobs', each of which is a chunk of discrete data.
+
+A blob consists of:
+ * A 4-byte ASCII signature describing the type of data the blob contains
+ * A 4-byte big-endian integer describing the length in bytes of the payload
+ * The payload itself, whose length in bytes is exactly the value of the
+   previous field
+
+There are several types of data that may be stored in a blob:
+ * A zero-length marker; the length is zero and the payload is nonexistent
+ * A 32-bit, big-endian integer, signed unless otherwise specified
+ * A string, encoded as UTF-8, with no padding or termination bytes
+ * Raw binary data
+
+A recording consists of a header, and the body. Each contains a sequential
+series of chunks.
+
+The header *shall* contain the following blob types:
+
+DRBT: (marker), indicating the start of the header
+RSPS: (int) Audio sample rate
+RCHN: (int) Number of channels: 1=mono, 2=stereo
+
+The header *may* contain the following blob types:
+
+RFRS: (int) Frame size (the number of samples in each chunk of audio)
+TIME: (int) The start time of the recording, in Unix time
+GULD: (str) The name of the server the recording was taken from
+CHNL: (str) The name of the channel the recording was taken from
+USER: (str) The name of the user of this recorded stream
+
+The body of the recording begins with a marker blob of type DATA.
+
+The body *shall* contain the following blobs:
+
+RPKT: (marker) The start of a packet of audio
+STMP: (int) The time the packet was received, measured as milliseconds since
+the start of the recording
+PCM0: (binary) PCM data in 16-bit format. The sample rate and channels are
+given by the information in the header.
+

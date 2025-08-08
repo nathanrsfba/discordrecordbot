@@ -1,0 +1,9 @@
+# Various garbage
+*~
+*.swp
+
+# Audio files
+*.drb
+*.raw
+*.wav
+
