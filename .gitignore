@@ -1,9 +1,12 @@
 # Various garbage
 *~
-*.swp
+.*.swp
+.*.swo
+test.*
 
 # Audio files
 *.drb
 *.raw
 *.wav
+*.flac
 
