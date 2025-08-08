@@ -13,6 +13,9 @@ function writeBlob( stream, name, data )
 {
     stream.write( Buffer.from( name ));
     if( data === null || data === undefined ) data = "";
+    // Convert strings to buffers so we get an accurate length
+    // for UTF encoded data
+    data = Buffer.from( data );
     buffer = Buffer.alloc( 4 );
     buffer.writeInt32BE( data.length );
     stream.write( buffer );
