@@ -138,8 +138,9 @@ function stopRecordings( message=undefined )
      * recordings directory however. */
     if( !message ) return;
 
-    message.reply('Recording stopped. Uploading files...');
+    message.reply('Recording stopped.');
 
+    /*
     // Upload all files from the session folder
     fs.readdir(sessionPath, async (err, files) => {
         if (err) return message.channel.send('Error reading session folder.');
@@ -156,6 +157,7 @@ function stopRecordings( message=undefined )
         }
 
         message.channel.send('All recordings uploaded.');
+    */
     });
 }
 
