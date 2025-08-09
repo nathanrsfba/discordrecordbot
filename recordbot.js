@@ -5,33 +5,41 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const keyfile = path.join( os.homedir(), ".recordbotkey" )
+
 /*
- * Write a block of type name to the stream
+ * Write a blob to the stream:
+ *
+ * stream: The stream to write to (as returned by `fs.createWriteStream`)
+ * name: A 4-character ASCII string identifying the blob type
+ * data: The data comprising the blob. This can be one of:
+ *  * null/undefined/absent: No data. The blob will contain only the signature
+ *    and a length of 0, and no payload.
+ *  * number: A 32-bit integer; will be written as 4 bytes, big-endian.
+ *  * string: A string; will be encoded in UTF-8, with no padding or
+ *    termination. The blob length gives the raw, encoded length of the data.
+ *  * Buffer: Raw binary data
  */
 function writeBlob( stream, name, data )
 {
     stream.write( Buffer.from( name ));
     if( data === null || data === undefined ) data = "";
-    // Convert strings to buffers so we get an accurate length
-    // for UTF encoded data
-    data = Buffer.from( data );
-    buffer = Buffer.alloc( 4 );
-    buffer.writeInt32BE( data.length );
-    stream.write( buffer );
+    if( typeof data == 'string' )
+    {
+        // Convert strings to buffers so we get an accurate length
+        // for UTF encoded data
+        data = Buffer.from( data );
+    }
+    else if( typeof data == 'number' )
+    {
+        buffer = Buffer.alloc( 4 );
+        buffer.writeInt32BE( data );
+        data = buffer
+    }
+    size = Buffer.alloc( 4 );
+    size.writeInt32BE( data.length );
+    stream.write( size );
     stream.write( data );
 }
-
-/*
- * Write a 32-bit int blob
- */
-
-function writeBlobInt( stream, name, data )
-{
-    buffer = Buffer.alloc( 4 );
-    buffer.writeInt32BE( data );
-    writeBlob( stream, name, buffer );
-}
-
 const recordRate = 48000;
 const recordChannels = 2;
 const recordFrameSize = 960;
@@ -174,15 +182,15 @@ function startUserRecording(userId, username) {
 
     // TODO: Detect file exists == User left and rejoined, append to file and skip header
     const outputStream = fs.createWriteStream( fileName );
-    writeBlob( outputStream, 'DRBT', null );
-    writeBlobInt( outputStream, 'RSPS', recordRate );
-    writeBlobInt( outputStream, 'RCHN', recordChannels );
-    writeBlobInt( outputStream, 'RFRS', recordFrameSize );
-    writeBlobInt( outputStream, 'TIME', Math.floor( startTime / 1000 ));
+    writeBlob( outputStream, 'DRBT' );
+    writeBlob( outputStream, 'RSPS', recordRate );
+    writeBlob( outputStream, 'RCHN', recordChannels );
+    writeBlob( outputStream, 'RFRS', recordFrameSize );
+    writeBlob( outputStream, 'TIME', Math.floor( startTime / 1000 ));
     writeBlob( outputStream, 'GULD', guildName );
     writeBlob( outputStream, 'CHNL', channelName );
     writeBlob( outputStream, 'USER', username );
-    writeBlob( outputStream, 'DATA', null );
+    writeBlob( outputStream, 'DATA' );
 
     // writeBlobInt( outputStream, 'CHNL', connection
 
@@ -194,8 +202,8 @@ function startUserRecording(userId, username) {
 
     audioStream.pipe(decoder).on( 'data', (chunk) => {
         console.log( `Received ${chunk.length} bytes of data.` );
-        writeBlob( outputStream, 'RPKT', null );
-        writeBlobInt( outputStream, 'STMP', Date.now() - startTime );
+        writeBlob( outputStream, 'RPKT' );
+        writeBlob( outputStream, 'STMP', Date.now() - startTime );
         writeBlob( outputStream, 'PCM0', chunk );
     });
     /*
