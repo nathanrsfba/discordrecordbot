@@ -100,39 +100,56 @@ client.on('messageCreate', async (message) => {
 
     if (message.content === '!stop') {
         if (!connection) return message.reply('Not recording right now.');
+        stopRecordings( message );
 
-        // Stop all streams and intervals
-        for (const { audioStream, outputStream } of Object.values(recordingStreams)) {
-            outputStream.end();
-        }
-
-        recordingStreams = {};
-
-        connection.destroy();
-        connection = null;
-        activeChannelId = null;
-
-        message.reply('Recording stopped. Uploading files...');
-
-        // Upload all files from the session folder
-        fs.readdir(sessionPath, async (err, files) => {
-            if (err) return message.channel.send('Error reading session folder.');
-
-            for (const file of files) {
-                const filePath = path.join(sessionPath, file);
-                if (fs.statSync(filePath).isFile()) {
-                    try {
-                        await message.channel.send({ files: [filePath] });
-                    } catch (uploadErr) {
-                        console.error(`Failed to upload ${file}:`, uploadErr);
-                    }
-                }
-            }
-
-            message.channel.send('All recordings uploaded.');
-        });
     }
 });
+
+/* Finish recording and shut down any streams.
+ *
+ * This is called when a !stop command is issued, or when the bot is shut down
+ */
+
+function stopRecordings( message=undefined )
+{
+    if( !connection ) return;
+
+    // Stop all streams and intervals
+    for (const { audioStream, outputStream } of Object.values(recordingStreams)) {
+        outputStream.end();
+    }
+
+    recordingStreams = {};
+
+    connection.destroy();
+    connection = null;
+    activeChannelId = null;
+
+    /* If we weren't shut down by a stop command, just exit, because there was
+     * nobody to reply to with the recordings. They'll still be saved in the
+     * recordings directory however. */
+    if( !message ) return;
+
+    message.reply('Recording stopped. Uploading files...');
+
+    // Upload all files from the session folder
+    fs.readdir(sessionPath, async (err, files) => {
+        if (err) return message.channel.send('Error reading session folder.');
+
+        for (const file of files) {
+            const filePath = path.join(sessionPath, file);
+            if (fs.statSync(filePath).isFile()) {
+                try {
+                    await message.channel.send({ files: [filePath] });
+                } catch (uploadErr) {
+                    console.error(`Failed to upload ${file}:`, uploadErr);
+                }
+            }
+        }
+
+        message.channel.send('All recordings uploaded.');
+    });
+}
 
 // Handle new users joining while recording
 client.on('voiceStateUpdate', (oldState, newState) => {
@@ -201,6 +218,7 @@ function startUserRecording(userId, username) {
 function shutdown( reason )
 {
     console.log( `Shutting down: ${reason}` );
+    stopRecordings();
     client.destroy();
 
 }
