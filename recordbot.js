@@ -157,8 +157,8 @@ function stopRecordings( message=undefined )
         }
 
         message.channel.send('All recordings uploaded.');
-    */
     });
+    */
 }
 
 // Handle new users joining while recording
