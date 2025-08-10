@@ -83,12 +83,16 @@ def main():
             )
 
     parser.add_argument( 'input', type=Path,
-                        help="Input recording file" )
+            help="Input recording file" )
     parser.add_argument( 'output', type=Path, nargs='?',
-                        help="Output file. Default is input file " +
-                        "with a .wav extension" )
+            help="Output file. Default is input file " +
+            "with a .wav extension" )
     parser.add_argument( '-S', '--no-silence', action='store_true',
-                        help="Don't reconstruct silences" )
+            help="Don't reconstruct silences" )
+    parser.add_argument( '-t', '--silence-threshold',
+            type=int, default=500, metavar='THRESHOLD',
+            help="Remove silences shorter " +
+            "than this length (in ms, default 500)" )
 
     args = parser.parse_args()
     if not args.output:
@@ -96,9 +100,9 @@ def main():
 
     with BlobFile.open( args.input, 'rb' ) as fin:
         with wave.open( str( args.output ), 'wb' ) as fout:
-            translate( fin, fout, args.no_silence )
+            translate( fin, fout, args.no_silence, args.silence_threshold )
 
-def translate( fin, fout, nopad=False ):
+def translate( fin, fout, nopad=False, silenceThreshold=500 ):
     header = {}
     while True:
         blob = fin.next()
@@ -157,7 +161,7 @@ def translate( fin, fout, nopad=False ):
             excess = expected - written
             excess -= excess % ssize
             # TODO: Configurable silence threshold
-            if excess > (500 * rate * ssize / 1000):
+            if excess > (silenceThreshold * rate * ssize / 1000):
                 msg += f"; padded {excess}"
                 if not nopad: fout.writeframesraw( bytes( [0] ) * excess )
                 written += excess
