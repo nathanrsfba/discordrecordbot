@@ -1,10 +1,16 @@
+/* Modules */
 const { Client, GatewayIntentBits } = require('discord.js');
 const { joinVoiceChannel, EndBehaviorType } = require('@discordjs/voice');
 const prism = require('prism-media');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
+
+/* Quasi-configuration stuff */
 const keyfile = path.join( os.homedir(), ".recordbotkey" )
+const recordRate = 48000;
+const recordChannels = 2;
+const recordFrameSize = 960;
 
 /*
  * Write a blob to the stream:
@@ -40,9 +46,7 @@ function writeBlob( stream, name, data )
     stream.write( size );
     stream.write( data );
 }
-const recordRate = 48000;
-const recordChannels = 2;
-const recordFrameSize = 960;
+
 
 const client = new Client({
     intents: [
@@ -53,182 +57,234 @@ const client = new Client({
     ]
 });
 
-const recordingsRoot = path.join(__dirname, 'recordings');
-if (!fs.existsSync(recordingsRoot)) fs.mkdirSync(recordingsRoot);
+const recordingsRoot = path.join( __dirname, 'recordings' );
+if( !fs.existsSync( recordingsRoot )) fs.mkdirSync( recordingsRoot );
 
-let connection;
-let recordingStreams = {}; // userId -> { audioStream, outputStream }
-let activeChannelId;
-let sessionPath;
-let startTime;
-let guildName;
-let channelName;
+/* Record the audio from a given voice chat channel */
 
-client.on('ready', () => {
+class Recorder
+{
+    connection; // Voice channel connection
+    recordingStreams = {}; // userId -> { audioStream, outputStream }
+    sessionPath; // Path to recording files
+    startTime; // Timestamp of start of recordings
+    channel; // The channel to record (as a Channel object)
+    startMessage; // The message that started recording
+
+    constructor( channel, message )
+    {
+        this.guild = channel.guild;
+        this.channel = channel;
+        this.startMessage = message;
+        // Create a new session folder
+        const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+        this.sessionPath = path.join(recordingsRoot, `session-${timestamp}`);
+        fs.mkdirSync( this.sessionPath );
+
+        this.connection = joinVoiceChannel({
+            channelId: channel.id,
+            guildId: channel.guild.id,
+            adapterCreator: channel.guild.voiceAdapterCreator
+        });
+
+        this.startTime = Date.now();
+
+        // Record all current members
+        channel.members.forEach( member => {
+            this.addUser( member );
+        });
+
+    }
+
+    addUser( member )
+    {
+        if( member.user.bot ) return; // Ignore bots
+
+        const audioStream = this.connection.receiver.subscribe(
+            member.id, {
+                end: { behavior: EndBehaviorType.Manual }
+        });
+
+        let outputStream;
+
+        if( !(member.id in this.recordingStreams) )
+        {
+            const safeUsername = member.user.username.replace(
+                /[^a-z0-9_\-]/gi, '_' );
+            const fileName = path.join(
+                this.sessionPath, `${safeUsername}.drb` );
+
+            outputStream = fs.createWriteStream( fileName );
+            writeBlob( outputStream, 'DRBT' );
+            writeBlob( outputStream, 'RSPS', recordRate );
+            writeBlob( outputStream, 'RCHN', recordChannels );
+            writeBlob( outputStream, 'RFRS', recordFrameSize );
+            writeBlob( outputStream, 'TIME',
+                Math.floor( this.startTime / 1000 ));
+            writeBlob( outputStream, 'GULD', this.guild.name );
+            writeBlob( outputStream, 'CHNL', this.channel.name );
+            writeBlob( outputStream, 'USER', member.user.username );
+            writeBlob( outputStream, 'DATA' );
+            this.recordingStreams[member.id] = { audioStream, outputStream };
+            console.log( `Recording started for ${member.user.username}` );
+        }
+        else
+        {
+            /* If this user was previously being recorded, we'll use the new
+             * audio stream we created, but keep the output filehandle that we
+             * left open, and just append more audio chunks to it. The
+             * timestamped nature of the file format will keep things in sync.
+             */
+            this.recordingStreams[member.id].audioStream = audioStream;
+            outputStream = this.recordingStreams[member.id].outputStream;
+            console.log( `Recording re-started for ${member.user.username}` );
+        }
+
+        const decoder = new prism.opus.Decoder({ 
+            rate: recordRate, 
+            channels: recordChannels,
+            frameSize: recordFrameSize
+        });
+
+        audioStream.pipe(decoder).on( 'data', (chunk) => {
+            // console.log( `Received ${chunk.length} bytes of data.` );
+            writeBlob( outputStream, 'RPKT' );
+            writeBlob( outputStream, 'STMP', Date.now() - this.startTime );
+            writeBlob( outputStream, 'PCM0', chunk );
+        });
+    }
+
+    removeUser( member )
+    {
+        if( !(member.id in this.recordingStreams) )
+        {
+            /* Not sure how this happened, but we were never recording
+             * this user! */
+            return;
+        }
+
+        /* We're going to dump the audio stream coming from discord,
+         * but keep the output stream. If the user rejoins, we'll continue
+         * appending to it as if nothing happened.
+         */
+
+        this.recordingStreams[member.id].audioStream.destroy();
+        this.recordingStreams[member.id].audioStream = null;
+
+        console.log( `Stopped recording for ${member.user.username}` );
+    }
+
+    /* Finish recording and shut down any streams.
+     *
+     * This is called when a !stop command is issued, 
+     * or when the bot is shut down
+     */
+
+    stopRecordings( message=undefined )
+    {
+        // Stop all streams and intervals
+        for( const { audioStream, outputStream } of 
+            Object.values( this.recordingStreams ))
+        {
+            outputStream.end();
+        }
+
+        this.connection.destroy();
+
+        delete recorders[this.channel.id];
+
+        /* If we weren't shut down by a stop command, reply to the message that
+         * was used to start recordings */
+        if( !message ) message = this.startMessage;
+        message.reply( `Recording stopped for ${this.channel.name}` );
+    }
+}
+
+recorders = {};
+
+client.on( 'ready', () => {
     console.log(`Logged in as ${client.user.tag}`);
 });
 
-client.on('messageCreate', async (message) => {
-    if (message.author.bot) return;
+client.on( 'messageCreate', async (message) => {
+    if( message.author.bot ) return;
 
-    if (message.content === '!start') {
-        if (!message.member.voice.channel) {
-            return message.reply('You must be in a voice channel to start recording.');
+    if( message.content === '!start' )
+    {
+        if( !message.member.voice.channel )
+        {
+            return message.reply(
+                'You must be in a voice channel to start recording.' );
         }
-        if (connection) {
-            return message.reply('Already recording!');
+        if( recorders[message.member.voice.channel.id] )
+        {
+            return message.reply( 'Already recording this channel!' );
         }
 
-        channelName = message.member.voice.channel.name;
-        guildName = message.member.voice.channel.guild.name;
+        recorder = new Recorder( message.member.voice.channel, message );
+        recorders[message.member.voice.channel.id] = recorder;
 
-        // Create a new session folder
-        const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-        sessionPath = path.join(recordingsRoot, `session-${timestamp}`);
-        fs.mkdirSync(sessionPath);
-
-        const channel = message.member.voice.channel;
-        activeChannelId = channel.id;
-
-        connection = joinVoiceChannel({
-            channelId: channel.id,
-            guildId: channel.guild.id,
-            adapterCreator: channel.guild.voiceAdapterCreator,
-        });
-
-        startTime = Date.now();
-        
-        // Record all current members
-        channel.members.forEach(member => {
-            if (!member.user.bot) startUserRecording(member.id, member.user.username);
-        });
-
-        message.reply(`Recording started. Session folder: ${sessionPath}`);
+        message.reply(
+            `Recording started. Session folder: ${recorder.sessionPath}` );
     }
 
-    if (message.content === '!stop') {
-        if (!connection) return message.reply('Not recording right now.');
-        stopRecordings( message );
-
+    if( message.content === '!stop' )
+    {
+        if( !message.member.voice.channel )
+        {
+            return message.reply( "You're not in a voice channel" );
+        }
+        const cid = message.member.voice.channel.id;
+        if( !(cid in recorders) )
+        {
+            return message.reply( 'Not recording this channel' );
+        }
+        recorders[cid].stopRecordings( message );
     }
 });
 
-/* Finish recording and shut down any streams.
- *
- * This is called when a !stop command is issued, or when the bot is shut down
- */
+// Handle users joining or leaving
+client.on( 'voiceStateUpdate', (oldState, newState) => {
+    /* This event is fired when a user joins or leaves a voice channel, or when
+     * some other status changes. oldState and newState contain the previous
+     * and new states. Of interest are the channelId and member members, which
+     * contain the channel and user in question. The channelId may be null
+     * (user was not in a channel or left a channel) or the ID of the channel
+     * they left/joined. */
 
-function stopRecordings( message=undefined )
-{
-    if( !connection ) return;
-
-    // Stop all streams and intervals
-    for (const { audioStream, outputStream } of Object.values(recordingStreams)) {
-        outputStream.end();
+    if( oldState.channelId == newState.channelId )
+    {
+        /* Channel was not changed. This event represents some other
+         * status change. */
+        return;
     }
 
-    recordingStreams = {};
-
-    connection.destroy();
-    connection = null;
-    activeChannelId = null;
-
-    /* If we weren't shut down by a stop command, just exit, because there was
-     * nobody to reply to with the recordings. They'll still be saved in the
-     * recordings directory however. */
-    if( !message ) return;
-
-    message.reply('Recording stopped.');
-
-    /*
-    // Upload all files from the session folder
-    fs.readdir(sessionPath, async (err, files) => {
-        if (err) return message.channel.send('Error reading session folder.');
-
-        for (const file of files) {
-            const filePath = path.join(sessionPath, file);
-            if (fs.statSync(filePath).isFile()) {
-                try {
-                    await message.channel.send({ files: [filePath] });
-                } catch (uploadErr) {
-                    console.error(`Failed to upload ${file}:`, uploadErr);
-                }
-            }
+    if( oldState.channelId )
+    {
+        /* User left a channel */
+        if( oldState.channelId in recorders )
+        {
+            recorders[oldState.channelId].removeUser( oldState.member );
         }
-
-        message.channel.send('All recordings uploaded.');
-    });
-    */
-}
-
-// Handle new users joining while recording
-client.on('voiceStateUpdate', (oldState, newState) => {
-    if (!connection || !activeChannelId) return;
-
-    if (newState.channelId === activeChannelId && !newState.member.user.bot) {
-        startUserRecording(newState.id, newState.member.user.username);
     }
 
-    // TODO: Detect user leaving and close recording
+    if( newState.channelId )
+    {
+        /* User joined a channel */
+        if( newState.channelId in recorders )
+        {
+            recorders[newState.channelId].addUser( newState.member );
+        }
+    }
+
 });
-
-function startUserRecording(userId, username) {
-    if (recordingStreams[userId]) return; // already recording
-
-    const safeUsername = username.replace(/[^a-z0-9_\-]/gi, '_');
-    const fileName = path.join(sessionPath, `${safeUsername}.drb`);
-
-    const audioStream = connection.receiver.subscribe(userId, {
-        end: { behavior: EndBehaviorType.Manual }
-    });
-
-    // TODO: Detect file exists == User left and rejoined, append to file and skip header
-    const outputStream = fs.createWriteStream( fileName );
-    writeBlob( outputStream, 'DRBT' );
-    writeBlob( outputStream, 'RSPS', recordRate );
-    writeBlob( outputStream, 'RCHN', recordChannels );
-    writeBlob( outputStream, 'RFRS', recordFrameSize );
-    writeBlob( outputStream, 'TIME', Math.floor( startTime / 1000 ));
-    writeBlob( outputStream, 'GULD', guildName );
-    writeBlob( outputStream, 'CHNL', channelName );
-    writeBlob( outputStream, 'USER', username );
-    writeBlob( outputStream, 'DATA' );
-
-    // writeBlobInt( outputStream, 'CHNL', connection
-
-    const decoder = new prism.opus.Decoder({ 
-        rate: recordRate, 
-        channels: recordChannels,
-        frameSize: 960
-    });
-
-    audioStream.pipe(decoder).on( 'data', (chunk) => {
-        console.log( `Received ${chunk.length} bytes of data.` );
-        writeBlob( outputStream, 'RPKT' );
-        writeBlob( outputStream, 'STMP', Date.now() - startTime );
-        writeBlob( outputStream, 'PCM0', chunk );
-    });
-    /*
-        recordingStreams[userId].lastPacket = Date.now();
-    }).pipe(ffmpeg.stdin);
-
-    // Inject silence if no packets received for >20ms
-    const interval = setInterval(() => {
-        if (Date.now() - recordingStreams[userId].lastPacket > 20) {
-            ffmpeg.stdin.write(SILENCE_FRAME);
-        }
-    }, 20);
-*/
-
-    recordingStreams[userId] = { audioStream, outputStream };
-
-    console.log(`Recording started for ${username}`);
-}
 
 function shutdown( reason )
 {
     console.log( `Shutting down: ${reason}` );
-    stopRecordings();
+    Object.values( recorders ).forEach( recorder => {
+        recorder.stopRecordings();
+    });
     client.destroy();
 
 }
