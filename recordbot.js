@@ -303,6 +303,10 @@ function shutdown( reason )
 
 }
 
+process.on( 'SIGHUP', () => {
+    shutdown( "Hangup" );
+});
+
 process.on( 'SIGINT', () => {
     shutdown( "Interrupt" );
 });
