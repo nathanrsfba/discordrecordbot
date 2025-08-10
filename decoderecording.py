@@ -157,7 +157,7 @@ def translate( fin, fout, nopad=False ):
             excess = expected - written
             excess -= excess % ssize
             # TODO: Configurable silence threshold
-            if excess > 0:
+            if excess > (500 * rate * ssize / 1000):
                 msg += f"; padded {excess}"
                 if not nopad: fout.writeframesraw( bytes( [0] ) * excess )
                 written += excess
