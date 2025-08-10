@@ -172,6 +172,20 @@ class Recorder
         this.recordingStreams[member.id].audioStream = null;
 
         console.log( `Stopped recording for ${member.user.username}` );
+
+        /* See if any human members are left */
+        let humans = false;
+        this.channel.members.forEach( member => {
+            if( !member.user.bot )
+            {
+                humans = true;
+            }
+        });
+        if( humans ) return;
+
+        /* No human participants remaining, shutdown automatically */
+        this.stopRecordings();
+
     }
 
     /* Finish recording and shut down any streams.
