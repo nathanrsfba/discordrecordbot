@@ -10,3 +10,5 @@ test.*
 *.wav
 *.flac
 
+node_modules
+package-lock.json
