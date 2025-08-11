@@ -26,9 +26,16 @@
 #    this, calling one of the other upload_ functions, depending on the
 #    configuration variables.
 #
-# Currently, only rclone is supported, which will upload to any hosting service
-# supported by it. It will upload to the specified path, then generate a public
-# link and return it.
+# Currently supported upload methods:
+# * rclone, which will upload to any hosting service supported by it. It will
+#   upload to the specified path, then generate a public link and return it.
+#   Naturally this requires a service that provides the ability to share files
+#   publicly (like Dropbox)
+# * Uploading to a web server using sftp (using rsync). The user is expected to
+#   provide a user and hostname to the hosting server, and directory to upload
+#   into, along with the URL pointing to said directory on the web. It will
+#   return a link based on the latter. It assumes SSH keys for the server are
+#   provided in ~/.ssh
 #
 # Any output to stdout or stderr from this script is saved to a log file. The
 # script can call the `status` function to output a message that will be sent
@@ -71,11 +78,17 @@ TIMEFMT="%Y-%m-%d_%H-%M-%SZ"
 # Upload files to this path using rclone
 #RCLONE_PATH="dropbox:/recordbot"
 
+# Upload using sftp (using rsync) to a hosting provider.
+# This assumes you have the appropriate key in ~/.ssh
+#SFTP_PATH=user@host:/home/recordbot/recordings
+# The url of the recordings folder, as accessible on the web
+#WEB_PATH=http://example.com/recordbot/recordings
+
 # Perform the actual processing
 main() {
-    decode_all
-    transcode_all
-    zip_audio
+    # decode_all
+    # transcode_all
+    # zip_audio
     upload_archive
 }
 
@@ -175,6 +188,8 @@ upload_archive() {
 
     if [ "$RCLONE_PATH" != "" ]; then
         upload_rclone "$filename"
+    elif [ "$SFTP_PATH" != "" ]; then
+        upload_sftp "$filename"
     else
         error "No upload method configured"
     fi
@@ -197,6 +212,28 @@ upload_rclone() {
     link="`rclone link "$target/$filename" | tail -1`" || 
         error "Error getting link"
     status "Uploaded to $link"
+}
+
+# Upload using sftp
+# $1: The filename (default calls `zip_filename`)
+# $2: The target path on the server (default $SFTP_PATH)
+# $3: The URL of the parent folder on the server (default $WEB_PATH)
+upload_sftp() {
+    filename="$1"
+    if [ "$1" = "" ]; then
+        filename="`zip_filename`"
+    fi
+    target="$2"
+    if [ "$2" = "" ]; then
+        target="$SFTP_PATH"
+    fi
+    target="$3"
+    if [ "$2" = "" ]; then
+        target="$WEB_PATH"
+    fi
+    status "Uploading..."
+    rsync --chmod=644 "$filename" "$SFTP_PATH" || error "Error uploading"
+    status "Uploaded to $WEB_PATH/$filename"
 }
 
 # Display a message on stdout.
