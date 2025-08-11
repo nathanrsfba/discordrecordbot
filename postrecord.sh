@@ -9,9 +9,9 @@ TIMEFMT="%Y-%m-%d_%H-%M-%SZ"
 
 # Perform the actual processing
 main() {
-    #decode_all
-    #transcode_all
-    #zip_audio
+    decode_all
+    transcode_all
+    zip_audio
     upload_archive
 }
 
