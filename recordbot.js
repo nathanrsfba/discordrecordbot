@@ -4,15 +4,21 @@ const { joinVoiceChannel, EndBehaviorType } = require('@discordjs/voice');
 const { spawn } = require( 'node:child_process' );
 const process = require( 'node:process' );
 const prism = require('prism-media');
+const toml = require( 'toml' );
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
 
-/* Quasi-configuration stuff */
-const keyfile = path.join( os.homedir(), ".recordbotkey" )
-const recordRate = 48000;
-const recordChannels = 2;
-const recordFrameSize = 960;
+const configPath = path.join( os.homedir(), ".recordbot" )
+
+// Default configuration
+var config = {
+    recordrate: 48000,
+    recordchannels: 2,
+    recordframeSize: 960,
+    recordpath: path.join( __dirname, 'recordings' ),
+    postprocessorpath: path.join( __dirname, 'postrecord.sh' )
+}
 
 /*
  * Write a blob to the stream:
@@ -59,9 +65,6 @@ const client = new Client({
     ]
 });
 
-const recordingsRoot = path.join( __dirname, 'recordings' );
-if( !fs.existsSync( recordingsRoot )) fs.mkdirSync( recordingsRoot );
-
 /* Record the audio from a given voice chat channel */
 
 class Recorder
@@ -81,7 +84,8 @@ class Recorder
         this.startMessage = message;
         // Create a new session folder
         const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-        this.sessionPath = path.join(recordingsRoot, `session-${timestamp}`);
+        this.sessionPath = path.join(
+            config.recordpath, `session-${timestamp}` );
         fs.mkdirSync( this.sessionPath );
 
         this.connection = joinVoiceChannel({
@@ -119,9 +123,9 @@ class Recorder
 
             outputStream = fs.createWriteStream( fileName );
             writeBlob( outputStream, 'DRBT' );
-            writeBlob( outputStream, 'RSPS', recordRate );
-            writeBlob( outputStream, 'RCHN', recordChannels );
-            writeBlob( outputStream, 'RFRS', recordFrameSize );
+            writeBlob( outputStream, 'RSPS', config.recordrate );
+            writeBlob( outputStream, 'RCHN', config.recordchannels );
+            writeBlob( outputStream, 'RFRS', config.recordframeSize );
             writeBlob( outputStream, 'TIME',
                 Math.floor( this.startTime / 1000 ));
             writeBlob( outputStream, 'GULD', this.guild.name );
@@ -144,9 +148,9 @@ class Recorder
         }
 
         const decoder = new prism.opus.Decoder({ 
-            rate: recordRate, 
-            channels: recordChannels,
-            frameSize: recordFrameSize
+            rate: config.recordrate, 
+            channels: config.recordchannels,
+            frameSize: config.recordframeSize
         });
 
         audioStream.pipe(decoder).on( 'data', (chunk) => {
@@ -216,20 +220,25 @@ class Recorder
         const reply = message.reply( `Recording stopped for ${this.channel.name}` ) .then( reply => {
             // Run the postprocessor script
 
-            const scriptenv = {
+            let scriptenv = {
                 REC_SERVER: this.guild.name,
                 REC_CHANNEL: this.channel.name,
                 REC_TIME: this.startTime,
                 REC_BASEDIR: __dirname
             }
 
-            let child = spawn( `${__dirname}/postrecord.sh`, [], { 
+            if( 'postprocessor' in config )
+            {
+                scriptenv = {...scriptenv, ...config.postprocessor };
+            }
+
+            let child = spawn( config.postprocessorpath, [], { 
                 env: { ...process.env, ...scriptenv },
                 cwd: this.sessionPath
             });
 
-            /* Listen for output from the postprocessor. Each line that comes in,
-             * edit our reply to add a status update */
+            /* Listen for output from the postprocessor. Each line that comes
+             * in, edit our reply to add a status update */
             let buffer = ""
             child.stdout.on( 'data', chunk => {
                 chunk = chunk.toString();
@@ -364,13 +373,14 @@ process.on( 'SIGTERM', () => {
     shutdown( "Terminate" );
 });
 
-if( !fs.existsSync( keyfile ))
+if( !fs.existsSync( configPath ))
 {
-    console.log( `Please place the discord app key in ${keyfile}` );
+    console.log( `Please create a configuration file with a token in ${configPath}` );
 }
 else
 {
-    key = fs.readFileSync( keyfile, 'utf8' ).trim();
+    config = { ...config, ...(toml.parse( fs.readFileSync( configPath ))) };
+    key = config.token
     client.login( key );
 }
 

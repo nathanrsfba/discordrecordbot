@@ -67,9 +67,9 @@
 # There are several configurable variables below
 
 # The path to the .drb recoder
-DECODER="$REC_BASEDIR/decoderecording.py"
+#DECODER="$REC_BASEDIR/decoderecording.py"
 # The timestamp format, as accepted by date(1)
-TIMEFMT="%Y-%m-%d_%H-%M-%SZ"
+#TIMEFMT="%Y-%m-%d_%H-%M-%SZ"
 
 # Upload methods:
 # Uncomment one of the following, and point it to the path where you want files
@@ -86,15 +86,19 @@ TIMEFMT="%Y-%m-%d_%H-%M-%SZ"
 
 # Perform the actual processing
 main() {
-    # decode_all
-    # transcode_all
-    # zip_audio
+    decode_all
+    transcode_all
+    zip_audio
     upload_archive
 }
 
 # Decode all .drb files to .wav
 decode_all() {
     status "Reconstructing recordings..."
+
+    if [ "$DECODER" = "" ]; then
+        DECODER="$REC_BASEDIR/decoderecording.py"
+    fi
 
     for drb in *.drb; do
         decode_drb $drb || error "Error reconstructing $drb"
@@ -160,7 +164,7 @@ zip_audio() {
 # Convert a Unix timestamp to a meaningful timestamp
 # $1: The time in Unix time
 make_timestamp() {
-    date -d "@$1" +"$TIMEFMT"
+    date -d "@$1" +"${TIMEFMT:-%Y-%m-%d_%H-%M-%SZ}"
 }
 
 # Generate the output filename based on passed environment
