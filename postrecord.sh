@@ -1,9 +1,73 @@
 #!/bin/sh
 
+# This script will automatically transcode completed recordings into the
+# desired format, and upload to the desired hosting provider. It is modular, so
+# functions can be edited or replaced to customize it for your needs.
+#
+# You can even `source` it from another script, define replacement functions,
+# then call the `run` function at the end to extend it without modifying the
+# original.
+#
+# The script has four main stages:
+# 1. Decode the .drb files into .wav files. This uses the included decoder
+#    stript. You can customize the `decode_drb` function, which is called on
+#    each individual file.
+# 2. Transcode the .wav files into flac format. This calls `ffmpeg`, so it
+#    requires an ffmpeg with the appropriate codec. You can customize this
+#    function, or you can pass the format type to `transcode_all` in the `main`
+#    function. This simply changes the file extension in the output filename
+#    given to ffmpeg, and thus can be anything ffmpeg recognizes. You could
+#    also skip this step to just include the raw .wav.
+# 3. Zip the audio files into a single zip file. `zip_audio` does this. By
+#    default this calls the `zip_filename` function to generate an output
+#    filename, and expects files in flac format. You'll need to supply the
+#    latter if you've changed it.
+# 4. Upload the arcive to the desired host. The `upload_archive` function does
+#    this, calling one of the other upload_ functions, depending on the
+#    configuration variables.
+#
+# Currently, only rclone is supported, which will upload to any hosting service
+# supported by it. It will upload to the specified path, then generate a public
+# link and return it.
+#
+# Any output to stdout or stderr from this script is saved to a log file. The
+# script can call the `status` function to output a message that will be sent
+# to discord in a message. In particular, this should be used at the end of the
+# script to post the public link to the uploaded file, which the upload_
+# functions do.
+#
+# Other functions of note:
+# * make_timestamp: Turns a Unix time into a human-readable timestamp. This
+#   just calls `date` with the $TIMEFMT variable, so just editing the latter
+#   should be sufficient.
+# * zip_filename: Generates a filename for the final .zip file. By default it
+#   generates something based on the server, channel, and timestamp.
+# * safe_fn: Replaces all non-alphanumeric characters, plus _, -, and ., with
+#   underscores. This will turn a string into something suitable as a filename
+#   on any system.
+# * error: Displays an error message and exist with error code 1.
+#
+# This script is called with several environment variables set:
+# REC_BASEDIR: The directory of the RecordBot script
+# REC_SERVER: The name of the server the recording was taken from
+# REC_CHANNEL: The name of the channel the recording was taken from
+# REC_TIME: The time of the recording, in Unix time
+#
+# This script is run in the directory with the recordings from a single
+# recording session. Thus, the files it's expected to work with will be in the
+# current directory.
+#
+# There are several configurable variables below
+
 # The path to the .drb recoder
 DECODER="$REC_BASEDIR/decoderecording.py"
-# The timestamp format
+# The timestamp format, as accepted by date(1)
 TIMEFMT="%Y-%m-%d_%H-%M-%SZ"
+
+# Upload methods:
+# Uncomment one of the following, and point it to the path where you want files
+# uploaded.
+
 # Upload files to this path using rclone
 #RCLONE_PATH="dropbox:/recordbot"
 
@@ -146,6 +210,8 @@ error() {
     exit 1
 }
 
+# Run the actual process, with IO redirected. If you source this script, call
+# this function at the end of your script.
 run() {
     main 3>&1 > log.txt 2>&1
 }
