@@ -1,6 +1,8 @@
 /* Modules */
 const { Client, GatewayIntentBits } = require('discord.js');
 const { joinVoiceChannel, EndBehaviorType } = require('@discordjs/voice');
+const { spawn } = require( 'node:child_process' );
+const process = require( 'node:process' );
 const prism = require('prism-media');
 const fs = require('fs');
 const os = require('os');
@@ -68,6 +70,7 @@ class Recorder
     recordingStreams = {}; // userId -> { audioStream, outputStream }
     sessionPath; // Path to recording files
     startTime; // Timestamp of start of recordings
+    guild; // The server
     channel; // The channel to record (as a Channel object)
     startMessage; // The message that started recording
 
@@ -210,7 +213,53 @@ class Recorder
         /* If we weren't shut down by a stop command, reply to the message that
          * was used to start recordings */
         if( !message ) message = this.startMessage;
-        message.reply( `Recording stopped for ${this.channel.name}` );
+        const reply = message.reply( `Recording stopped for ${this.channel.name}` ) .then( reply => {
+            // Run the postprocessor script
+
+            const scriptenv = {
+                REC_SERVER: this.guild.name,
+                REC_CHANNEL: this.channel.name,
+                REC_TIME: this.startTime,
+                REC_BASEDIR: __dirname
+            }
+
+            let child = spawn( `${__dirname}/postrecord.sh`, [], { 
+                env: { ...process.env, ...scriptenv },
+                cwd: this.sessionPath
+            });
+
+            /* Listen for output from the postprocessor. Each line that comes in,
+             * edit our reply to add a status update */
+            let buffer = ""
+            child.stdout.on( 'data', chunk => {
+                chunk = chunk.toString();
+                const lines = chunk.split( "\n" );
+                let line = null;
+                // console.log( lines.length );
+                if( lines.length == 1 )
+                {
+                    buffer += chunk;
+                }
+                else if( lines.length == 2 )
+                {
+                    buffer += lines[0];
+                    line = buffer;
+                    buffer = '';
+                }
+                else
+                {
+                    line = lines[lines.length - 2];
+                    buffer = lines[lines.length - 1];
+                }
+
+                // console.log( `Received chunk: ${chunk}` );
+                if( line )
+                {
+                    reply.edit( line );
+                    line = null;
+                }
+            });
+        });
     }
 }
 
