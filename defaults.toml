@@ -1,0 +1,31 @@
+# Discord bot token -- keep this secure
+token = "insert token here"
+
+# Samples per second for audio
+#recordrate = 48000
+# Number of channels: 1=mono, 2=stereo
+#recordchannels = 2
+# Number of samples to send in each chunk of data
+#recordframeSize = 960
+
+# Path to save recordings
+#recordpath = "./recordings"
+
+# Path to postprocessor script
+#postprocessorpath = "/home/user/customprocessor.sh"
+
+[postprocessor]
+# You can specify these variables here instead of editing the postprocessor
+# script
+
+# The timestamp format, as accepted by date(1)
+#TIMEFMT="%Y-%m-%d_%H-%M-%SZ"
+
+# Upload files to this path using rclone
+#RCLONE_PATH="dropbox:/recordbot"
+
+# Upload using sftp (using rsync) to a hosting provider.
+# This assumes you have the appropriate key in ~/.ssh
+#SFTP_PATH=user@host:/home/recordbot/recordings
+# The url of the recordings folder, as accessible on the web
+#WEB_PATH=http://example.com/recordbot/recordings
