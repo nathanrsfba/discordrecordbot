@@ -3,6 +3,7 @@
 .*.swp
 .*.swo
 test.*
+test-*
 
 # Audio files
 *.drb
