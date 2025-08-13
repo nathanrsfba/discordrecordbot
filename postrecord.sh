@@ -36,6 +36,8 @@
 #   into, along with the URL pointing to said directory on the web. It will
 #   return a link based on the latter. It assumes SSH keys for the server are
 #   provided in ~/.ssh
+# * Copying to a local folder. This is useful in place of sftp if the web
+#   server is on the local machine
 #
 # Any output to stdout or stderr from this script is saved to a log file. The
 # script can call the `status` function to output a message that will be sent
@@ -80,9 +82,15 @@
 
 # Upload using sftp (using rsync) to a hosting provider.
 # This assumes you have the appropriate key in ~/.ssh
-#SFTP_PATH=user@host:/home/recordbot/recordings
+#SFTP_PATH="user@host:/home/recordbot/recordings"
 # The url of the recordings folder, as accessible on the web
-#WEB_PATH=http://example.com/recordbot/recordings
+#WEB_PATH="http://example.com/recordbot/recordings"
+
+# "Upload" by copying to a local directory. Presumably a web server on the
+# local machine is serving out of the given directory.
+LOCAL_PATH="/srv/www/htdocs/recordings"
+# The url of the recordings folder, as accessible on the web
+WEB_PATH="http://example.com/recordbot/recordings"
 
 # Perform the actual processing
 main() {
@@ -194,6 +202,8 @@ upload_archive() {
         upload_rclone "$filename"
     elif [ "$SFTP_PATH" != "" ]; then
         upload_sftp "$filename"
+    elif [ "$LOCAL_PATH" != "" ]; then
+        upload_copy "$filename"
     else
         error "No upload method configured"
     fi
@@ -237,6 +247,30 @@ upload_sftp() {
     fi
     status "Uploading..."
     rsync --chmod=644 "$filename" "$target" || error "Error uploading"
+    status "Uploaded to $urlbase/$filename"
+}
+
+# "Upload" by copying to a local folder. Presumably you have a web server on
+# the local machine serving out of the given folder.
+# $1: The filename (default calls `zip_filename`)
+# $2: The target folder (default $LOCAL_PATH)
+# $3: The URL of the parent folder on the server (default $WEB_PATH)
+upload_copy() {
+    filename="$1"
+    if [ "$1" = "" ]; then
+        filename="`zip_filename`"
+    fi
+    target="$2"
+    if [ "$2" = "" ]; then
+        target="$LOCAL_PATH"
+    fi
+    urlbase="$3"
+    if [ "$3" = "" ]; then
+        urlbase="$WEB_PATH"
+    fi
+    status "Uploading..."
+    (cp "$filename" "$target" && chmod 644 "$target/$filename") ||
+        error "Error uploading"
     status "Uploaded to $urlbase/$filename"
 }
 
