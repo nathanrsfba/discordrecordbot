@@ -231,13 +231,13 @@ upload_sftp() {
     if [ "$2" = "" ]; then
         target="$SFTP_PATH"
     fi
-    target="$3"
-    if [ "$2" = "" ]; then
-        target="$WEB_PATH"
+    urlbase="$3"
+    if [ "$3" = "" ]; then
+        urlbase="$WEB_PATH"
     fi
     status "Uploading..."
-    rsync --chmod=644 "$filename" "$SFTP_PATH" || error "Error uploading"
-    status "Uploaded to $WEB_PATH/$filename"
+    rsync --chmod=644 "$filename" "$target" || error "Error uploading"
+    status "Uploaded to $urlbase/$filename"
 }
 
 # Display a message on stdout.
