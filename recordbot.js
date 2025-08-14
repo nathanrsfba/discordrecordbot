@@ -227,7 +227,7 @@ class Recorder
             let scriptenv = {
                 REC_SERVER: this.guild.name,
                 REC_CHANNEL: this.channel.name,
-                REC_TIME: this.startTime,
+                REC_TIME: Math.floor( this.startTime / 1000 ),
                 REC_BASEDIR: __dirname
             }
 
