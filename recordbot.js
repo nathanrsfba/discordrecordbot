@@ -86,6 +86,10 @@ class Recorder
         const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
         this.sessionPath = path.join(
             config.recordpath, `session-${timestamp}` );
+        if( !fs.existsSync( config.recordpath ))
+        {
+            fs.mkdirSync( config.recordpath, { recursive: true } );
+        }
         fs.mkdirSync( this.sessionPath );
 
         this.connection = joinVoiceChannel({
