@@ -88,9 +88,9 @@
 
 # "Upload" by copying to a local directory. Presumably a web server on the
 # local machine is serving out of the given directory.
-LOCAL_PATH="/srv/www/htdocs/recordings"
+#LOCAL_PATH="/srv/www/htdocs/recordings"
 # The url of the recordings folder, as accessible on the web
-WEB_PATH="http://example.com/recordbot/recordings"
+#WEB_PATH="http://example.com/recordbot/recordings"
 
 # Perform the actual processing
 main() {
