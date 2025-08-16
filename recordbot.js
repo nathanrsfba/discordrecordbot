@@ -294,7 +294,7 @@ client.on( 'messageCreate', async (message) => {
         if( !message.member.voice.channel )
         {
             return message.reply(
-                'You must be in a voice channel to start recording.' );
+                "You're not in a voice channel in this server" );
         }
         if( recorders[message.member.voice.channel.id] )
         {
