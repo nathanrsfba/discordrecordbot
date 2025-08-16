@@ -221,58 +221,62 @@ class Recorder
         /* If we weren't shut down by a stop command, reply to the message that
          * was used to start recordings */
         if( !message ) message = this.startMessage;
-        const reply = message.reply( `Recording stopped for ${this.channel.name}` ) .then( reply => {
-            // Run the postprocessor script
+        const reply = message.author.send(
+            `Recording stopped for ${this.channel.name}` ).then( reply => {
+                // Run the postprocessor script
 
-            let scriptenv = {
-                REC_SERVER: this.guild.name,
-                REC_CHANNEL: this.channel.name,
-                REC_TIME: Math.floor( this.startTime / 1000 ),
-                REC_BASEDIR: __dirname
-            }
+                let scriptenv = {
+                    REC_SERVER: this.guild.name,
+                    REC_CHANNEL: this.channel.name,
+                    REC_TIME: Math.floor( this.startTime / 1000 ),
+                    REC_BASEDIR: __dirname
+                }
 
-            if( 'postprocessor' in config )
-            {
-                scriptenv = {...scriptenv, ...config.postprocessor };
-            }
+                if( 'postprocessor' in config )
+                {
+                    scriptenv = {...scriptenv, ...config.postprocessor };
+                }
 
-            let child = spawn( config.postprocessorpath, [], { 
-                env: { ...process.env, ...scriptenv },
-                cwd: this.sessionPath
+                let child = spawn( config.postprocessorpath, [], { 
+                    env: { ...process.env, ...scriptenv },
+                    cwd: this.sessionPath
+                });
+
+                /* Listen for output from the postprocessor. Each line that comes
+                 * in, edit our reply to add a status update */
+                let buffer = ""
+                child.stdout.on( 'data', chunk => {
+                    chunk = chunk.toString();
+                    const lines = chunk.split( "\n" );
+                    let line = null;
+                    // console.log( lines.length );
+                    if( lines.length == 1 )
+                    {
+                        buffer += chunk;
+                    }
+                    else if( lines.length == 2 )
+                    {
+                        buffer += lines[0];
+                        line = buffer;
+                        buffer = '';
+                    }
+                    else
+                    {
+                        line = lines[lines.length - 2];
+                        buffer = lines[lines.length - 1];
+                    }
+
+                    // console.log( `Received chunk: ${chunk}` );
+                    if( line )
+                    {
+                        reply.edit( line );
+                        line = null;
+                    }
+                });
+            }).catch( (error) => {
+                console.log( "Couldn't send message to user." );
+                console.log( error );
             });
-
-            /* Listen for output from the postprocessor. Each line that comes
-             * in, edit our reply to add a status update */
-            let buffer = ""
-            child.stdout.on( 'data', chunk => {
-                chunk = chunk.toString();
-                const lines = chunk.split( "\n" );
-                let line = null;
-                // console.log( lines.length );
-                if( lines.length == 1 )
-                {
-                    buffer += chunk;
-                }
-                else if( lines.length == 2 )
-                {
-                    buffer += lines[0];
-                    line = buffer;
-                    buffer = '';
-                }
-                else
-                {
-                    line = lines[lines.length - 2];
-                    buffer = lines[lines.length - 1];
-                }
-
-                // console.log( `Received chunk: ${chunk}` );
-                if( line )
-                {
-                    reply.edit( line );
-                    line = null;
-                }
-            });
-        });
     }
 }
 
